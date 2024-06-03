@@ -1,23 +1,28 @@
 import os
 from io import BytesIO
-from queue import Queue
+from urllib.parse import quote
 import requests
 from flask import Flask, request
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, MessageHandler, Filters, CallbackQueryHandler, Dispatcher
+from queue import Queue
 from movies_scraper import search_movies, get_movie
+from dotenv import load_dotenv
 
+load_dotenv()  # Load environment variables from .env file
 
 TOKEN = os.getenv("TOKEN")
 URL = os.getenv("URL")
-bot = Bot(TOKEN)
 
+if not TOKEN or not URL:
+    raise ValueError("Missing TOKEN or URL environment variables")
+
+bot = Bot(TOKEN)
 
 def welcome(update, context) -> None:
     update.message.reply_text(f"Hello {update.message.from_user.first_name}, Welcome to SB Movies.\n"
                               f"🔥 Download Your Favourite Movies For 💯 Free And 🍿 Enjoy it.")
     update.message.reply_text("👇 Enter Movie Name 👇")
-
 
 def find_movie(update, context):
     search_results = update.message.reply_text("Processing...")
@@ -32,7 +37,6 @@ def find_movie(update, context):
         search_results.edit_text('Search Results...', reply_markup=reply_markup)
     else:
         search_results.edit_text('Sorry 🙏, No Result Found!\nCheck If You Have Misspelled The Movie Name.')
-
 
 def movie_result(update, context) -> None:
     query = update.callback_query
@@ -51,35 +55,33 @@ def movie_result(update, context) -> None:
     else:
         query.message.reply_text(text=caption)
 
-
 def setup():
     update_queue = Queue()
     dispatcher = Dispatcher(bot, update_queue, use_context=True)
     dispatcher.add_handler(CommandHandler('start', welcome))
-    dispatcher.add_handler(MessageHandler(Filters.text, find_movie))
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, find_movie))
     dispatcher.add_handler(CallbackQueryHandler(movie_result))
     return dispatcher
 
-
 app = Flask(__name__)
-
 
 @app.route('/')
 def index():
     return 'Hello World!'
 
-
-@app.route('/{}'.format(TOKEN), methods=['GET', 'POST'])
+@app.route('/{}'.format(TOKEN), methods=['POST'])
 def respond():
     update = Update.de_json(request.get_json(force=True), bot)
     setup().process_update(update)
     return 'ok'
 
-
 @app.route('/setwebhook', methods=['GET', 'POST'])
 def set_webhook():
-    s = bot.setWebhook('{URL}/{HOOK}'.format(URL=URL, HOOK=TOKEN))
+    s = bot.setWebhook('{}/{}'.format(URL, TOKEN))
     if s:
         return "webhook setup ok"
     else:
         return "webhook setup failed"
+
+if __name__ == "__main__":
+    app.run(port=5000)
